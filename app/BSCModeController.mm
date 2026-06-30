@@ -29,6 +29,11 @@
 @property (nonatomic, assign) BOOL thermalPaused;
 @property (nonatomic, strong) NSDate *lastThermalPauseAt;
 @property (nonatomic, strong) dispatch_source_t networkMonitorTimer;
+@property (nonatomic, strong) dispatch_source_t encoderWatchdogTimer;
+@property (nonatomic, assign) NSUInteger lastWatchdogEncodedFrames;
+@property (nonatomic, strong) NSDate *lastEncodedFrameAt;
+@property (nonatomic, strong) NSDate *lastEncoderRestartAt;
+@property (nonatomic, assign) NSUInteger encoderRestartCount;
 @end
 
 @implementation BSCModeController
@@ -99,6 +104,7 @@ static NSString *BSCLocalWiFiAddress(void) {
 	[self.bonjourPublisher startWithHTTPPort:(uint16_t)httpPort rtspPort:(uint16_t)rtspPort];
 	self.lastAdvertisedHost = BSCLocalWiFiAddress();
 	[self startNetworkMonitor];
+	[self startEncoderWatchdog];
 
 	NSLog(@"[SecurityCam] camera mode active rtsp=%ld http=%ld %ldx%ld@%ld bitrate=%ld",
 		  (long)rtspPort, (long)httpPort, (long)width, (long)height, (long)fps, (long)bitrate);
@@ -114,11 +120,17 @@ static NSString *BSCLocalWiFiAddress(void) {
 	BOOL ok = [self.encoder start:error];
 	if (ok) {
 		self.thermalPaused = NO;
+		self.lastEncodedFrameAt = [NSDate date];
+		self.lastWatchdogEncodedFrames = self.encodedFrames;
 	}
 	return ok;
 }
 
 - (void)stop {
+	if (self.encoderWatchdogTimer) {
+		dispatch_source_cancel(self.encoderWatchdogTimer);
+		self.encoderWatchdogTimer = nil;
+	}
 	if (self.networkMonitorTimer) {
 		dispatch_source_cancel(self.networkMonitorTimer);
 		self.networkMonitorTimer = nil;
@@ -145,6 +157,69 @@ static NSString *BSCLocalWiFiAddress(void) {
 		[weakSelf refreshNetworkAdvertisementIfNeeded];
 	});
 	dispatch_resume(self.networkMonitorTimer);
+}
+
+- (void)startEncoderWatchdog {
+	if (self.encoderWatchdogTimer) {
+		return;
+	}
+
+	dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+	self.encoderWatchdogTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+	dispatch_source_set_timer(self.encoderWatchdogTimer,
+							  dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC),
+							  20 * NSEC_PER_SEC,
+							  3 * NSEC_PER_SEC);
+	__weak typeof(self) weakSelf = self;
+	dispatch_source_set_event_handler(self.encoderWatchdogTimer, ^{
+		[weakSelf checkEncoderProgress];
+	});
+	dispatch_resume(self.encoderWatchdogTimer);
+}
+
+- (void)checkEncoderProgress {
+	if (self.thermalPaused || ![BSCModeState isEnabled]) {
+		return;
+	}
+
+	NSUInteger currentFrames = self.encodedFrames;
+	BOOL frameAdvanced = currentFrames > self.lastWatchdogEncodedFrames;
+	self.lastWatchdogEncodedFrames = currentFrames;
+	if (frameAdvanced) {
+		return;
+	}
+
+	NSTimeInterval secondsSinceFrame = self.lastEncodedFrameAt ? [[NSDate date] timeIntervalSinceDate:self.lastEncodedFrameAt] : 999.0;
+	if (secondsSinceFrame < 25.0) {
+		return;
+	}
+
+	NSString *event = self.encoder.lastCaptureEvent ?: @"unknown";
+	NSString *reason = [NSString stringWithFormat:@"frame watchdog: no encoded frames for %.0fs, captureRunning=%@, lastCaptureEvent=%@",
+						secondsSinceFrame,
+						[self.encoder isCaptureRunning] ? @"true" : @"false",
+						event];
+	[self restartEncoderForReason:reason];
+}
+
+- (void)restartEncoderForReason:(NSString *)reason {
+	self.encoderRestartCount += 1;
+	self.lastEncoderRestartAt = [NSDate date];
+	self.lastError = reason;
+	NSLog(@"[SecurityCam] %@", reason);
+
+	[self.encoder stop];
+	self.encoder = nil;
+
+	NSError *error = nil;
+	if (![self startEncoder:&error]) {
+		self.lastError = [NSString stringWithFormat:@"%@; restart failed: %@", reason, error.localizedDescription ?: @"unknown"];
+		NSLog(@"[SecurityCam] %@", self.lastError);
+		return;
+	}
+
+	self.lastError = [NSString stringWithFormat:@"%@; encoder restarted", reason];
+	NSLog(@"[SecurityCam] %@", self.lastError);
 }
 
 - (void)refreshNetworkAdvertisementIfNeeded {
@@ -179,14 +254,7 @@ static NSString *BSCLocalWiFiAddress(void) {
 		}
 
 		if (self.thermalPaused && (state == NSProcessInfoThermalStateNominal || state == NSProcessInfoThermalStateFair)) {
-			NSError *error = nil;
-			if ([self startEncoder:&error]) {
-				self.lastError = @"thermal recovered: encoder restarted";
-				NSLog(@"[SecurityCam] %@", self.lastError);
-			} else {
-				self.lastError = [NSString stringWithFormat:@"thermal recovery restart failed: %@", error.localizedDescription ?: @"unknown"];
-				NSLog(@"[SecurityCam] %@", self.lastError);
-			}
+			[self restartEncoderForReason:@"thermal recovered"];
 			return;
 		}
 
@@ -208,6 +276,13 @@ static NSString *BSCLocalWiFiAddress(void) {
 	status[@"lastCaptureEvent"] = self.encoder.lastCaptureEvent ?: @"";
 	status[@"thermalPaused"] = @(self.thermalPaused);
 	status[@"lastThermalPauseAt"] = self.lastThermalPauseAt ? @([self.lastThermalPauseAt timeIntervalSince1970]) : @0;
+	status[@"lastEncodedFrameAt"] = self.lastEncodedFrameAt ? @([self.lastEncodedFrameAt timeIntervalSince1970]) : @0;
+	status[@"lastEncoderRestartAt"] = self.lastEncoderRestartAt ? @([self.lastEncoderRestartAt timeIntervalSince1970]) : @0;
+	status[@"encoderRestartCount"] = @(self.encoderRestartCount);
+	status[@"frameWatchdog"] = @{
+		@"lastSampledFrames": @(self.lastWatchdogEncodedFrames),
+		@"enabled": @YES
+	};
 	status[@"motionDetected"] = @([self.encoder isMotionDetected]);
 	status[@"motionScore"] = @(self.encoder.motionScore);
 	status[@"lastMotionTime"] = @(self.encoder.lastMotionTime);
@@ -258,6 +333,7 @@ static NSString *BSCLocalWiFiAddress(void) {
 
 - (void)videoEncoderDidEncodeNALUnits:(NSArray<NSData *> *)nalUnits keyframe:(BOOL)keyframe pts:(CMTime)pts {
 	self.encodedFrames += 1;
+	self.lastEncodedFrameAt = [NSDate date];
 	[self.rtspServer broadcastNALUnits:nalUnits keyframe:keyframe pts:pts];
 }
 

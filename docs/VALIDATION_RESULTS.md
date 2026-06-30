@@ -69,3 +69,29 @@ Pending forced Wi-Fi drop/roam test.
 ### Charging And Battery Heat
 
 Pending longer plugged-in observation.
+
+## 2026-06-30: Frozen Encoder Recovery
+
+Failure observed on package `0.3.0-3+debug`:
+
+- `/status` stayed alive.
+- `captureRunning` stayed `true`.
+- Snapshot endpoint returned a JPEG.
+- `encodedFrames` froze at `9921`.
+- Direct RTSP clients hung or reported incomplete stream dimensions.
+- Scrypted Rebroadcast/Prebuffer logged `timeout waiting for data` and Apple Home had no live video.
+
+Fix added in package `0.3.1-1+debug`:
+
+- In-app frame watchdog samples encoded frame progress every 20 seconds.
+- If encoded frames do not advance for more than 25 seconds, the app restarts the encoder without relying on process death.
+- `/status` now reports `lastEncodedFrameAt`, `lastEncoderRestartAt`, `encoderRestartCount`, and `frameWatchdog`.
+
+Recovery validation after installing `0.3.1-1+debug`:
+
+- Direct RTSP probed as H.264 `1280x720` at `10fps`.
+- Scrypted rebroadcast RTSP probed as H.264 `1280x720` at `10fps`.
+- Two-minute monitor passed: all status and RTSP samples OK.
+- Frames advanced from `492` to `1689`.
+- Thermal state moved from `nominal` to `fair`.
+- Final checked status reported `captureRunning=true`, `encodedFrames=2095`, `encoderRestartCount=0`, and `frameWatchdog.enabled=true`.

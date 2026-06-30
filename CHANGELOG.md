@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Adds an in-app frame watchdog that restarts the encoder if status stays alive but encoded H.264 frames stop advancing.
+- Reports `lastEncodedFrameAt`, `lastEncoderRestartAt`, `encoderRestartCount`, and `frameWatchdog` in `/status`.
+
 ## 0.3.0
 
 - Adds locked-screen resilience with `UIBackgroundModes=audio`, silent playback keepalive, a SecurityCam-only foreground/background substrate hook, capture interruption tracking, and status fields for `captureRunning` and `lastCaptureEvent`.

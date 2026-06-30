@@ -2,7 +2,7 @@ Package: com.github.bryce.securitycam
 Name: Old iPhone SecurityCam
 Depends: mobilesubstrate, firmware (>= 13.0)
 Replaces: com.bryce.securitycam
-Version: 0.3.0
+Version: 0.3.1
 Architecture: iphoneos-arm
 Description: Dedicated jailbreak camera mode with RTSP streaming, local status, thermal guardrails, and a SpringBoard escape combo.
 Maintainer: Bryce
