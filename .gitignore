@@ -1,0 +1,18 @@
+.DS_Store
+.env
+
+# Theos build output
+.theos/
+packages/
+
+# Local verification captures can contain private camera images.
+artifacts/
+
+# Optional local dependency checkout.
+theos/
+
+# Node/Scrypted helper dependencies if installed locally.
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

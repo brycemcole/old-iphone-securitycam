@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+if command -v uicache >/dev/null 2>&1; then
+  uicache -p /Applications/SecurityCam.app >/dev/null 2>&1 || uicache >/dev/null 2>&1 || true
+fi
+
+launchctl unload /Library/LaunchDaemons/com.bryce.securitycamd.plist >/dev/null 2>&1 || true
+rm -f /Library/LaunchDaemons/com.bryce.securitycamd.plist >/dev/null 2>&1 || true
+
+if [ ! -f /var/mobile/Library/Preferences/com.github.bryce.securitycam.mode.plist ] \
+  && [ -f /var/mobile/Library/Preferences/com.bryce.securitycam.mode.plist ]; then
+  cp /var/mobile/Library/Preferences/com.bryce.securitycam.mode.plist /var/mobile/Library/Preferences/com.github.bryce.securitycam.mode.plist >/dev/null 2>&1 || true
+  chown mobile:mobile /var/mobile/Library/Preferences/com.github.bryce.securitycam.mode.plist >/dev/null 2>&1 || true
+fi
+
+if [ -f /Library/LaunchDaemons/com.github.bryce.securitycamd.plist ]; then
+  launchctl unload /Library/LaunchDaemons/com.github.bryce.securitycamd.plist >/dev/null 2>&1 || true
+  launchctl load /Library/LaunchDaemons/com.github.bryce.securitycamd.plist >/dev/null 2>&1 || true
+fi
+
+exit 0

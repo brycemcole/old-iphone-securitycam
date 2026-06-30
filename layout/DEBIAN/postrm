@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+if command -v uicache >/dev/null 2>&1; then
+  uicache >/dev/null 2>&1 || true
+fi
+
+if [ "$1" = "purge" ]; then
+  rm -f /var/mobile/Library/Preferences/com.github.bryce.securitycam.mode.plist
+fi
+
+exit 0

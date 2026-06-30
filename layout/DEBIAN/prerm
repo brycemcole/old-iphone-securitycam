@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+if [ -f /Library/LaunchDaemons/com.github.bryce.securitycamd.plist ]; then
+  launchctl unload /Library/LaunchDaemons/com.github.bryce.securitycamd.plist >/dev/null 2>&1 || true
+fi
+
+killall SecurityCam >/dev/null 2>&1 || true
+
+exit 0
