@@ -29,6 +29,10 @@ Practical limitation:
 
 - If the app is fully stopped while the phone is already locked, iOS may block the foreground launch until the phone is unlocked once. Start camera mode from an unlocked phone, confirm `/status`, then lock it for the true-lock test.
 
+Confirmed result:
+
+- Passed a 6-minute physical-lock validation on iPhone SE `iPhone8,4`, iOS `13.1.2`, with package `0.3.0-3+debug`. See [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md).
+
 ## Does Apple Home live view work reliably?
 
 Pass criteria:
