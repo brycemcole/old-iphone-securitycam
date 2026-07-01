@@ -15,7 +15,7 @@ export default class IPhoneSESecurityCam extends ScryptedDeviceBase {
     this.info = {
       manufacturer: 'Apple',
       model: 'iPhone SE',
-      firmware: 'Jailbreak SecurityCam 0.3.1',
+      firmware: 'Jailbreak SecurityCam 0.3.2',
     };
     this.startStatusPolling();
   }

@@ -95,3 +95,25 @@ Recovery validation after installing `0.3.1-1+debug`:
 - Frames advanced from `492` to `1689`.
 - Thermal state moved from `nominal` to `fair`.
 - Final checked status reported `captureRunning=true`, `encodedFrames=2095`, `encoderRestartCount=0`, and `frameWatchdog.enabled=true`.
+
+## 2026-06-30: Device Dropped Off LAN
+
+Failure observed after prior successful locked-stream and encoder recovery tests:
+
+- `192.168.86.28` stopped answering HTTP, RTSP, and SSH.
+- `192.168.86.46` also did not answer.
+- Bonjour no longer advertised `_oldiphonecam._tcp`.
+- Scrypted logged `getaddrinfo ENOTFOUND Bryces-iPhone-2.local` and repeated prebuffer timeouts.
+- LAN scan did not find another SecurityCam HTTP/RTSP/SSH endpoint.
+- ARP showed `bryces-iphone.lan (192.168.86.28)` as incomplete.
+- Tailscale `iphone181` was offline.
+
+Interpretation:
+
+- This was not the previous frozen-encoder failure. The whole phone disappeared from the local network or rebooted into a state without jailbreak services.
+
+Mitigation prepared in package `0.3.2-1+debug`, pending install and validation once the phone is reachable:
+
+- App starts a no-idle-sleep power assertion while camera mode is active.
+- App sends a periodic local-network heartbeat to the presumed gateway.
+- `/status` reports `lastNetworkKeepaliveAt` and `networkKeepaliveTarget`.

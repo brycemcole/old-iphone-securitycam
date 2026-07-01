@@ -17,7 +17,9 @@
 @property (nonatomic, strong) BSCBonjourPublisher *bonjourPublisher;
 @property (nonatomic, strong) NSDate *startedAt;
 @property (nonatomic, strong) NSDate *lastNetworkChangeAt;
+@property (nonatomic, strong) NSDate *lastNetworkKeepaliveAt;
 @property (nonatomic, copy) NSString *lastAdvertisedHost;
+@property (nonatomic, copy) NSString *networkKeepaliveTarget;
 @property (nonatomic, assign) NSInteger rtspPort;
 @property (nonatomic, assign) NSInteger httpPort;
 @property (nonatomic, assign) NSInteger desiredWidth;
@@ -227,6 +229,7 @@ static NSString *BSCLocalWiFiAddress(void) {
 	if (!host.length || [host isEqualToString:@"0.0.0.0"]) {
 		return;
 	}
+	[self sendNetworkKeepaliveFromHost:host];
 	if ([host isEqualToString:self.lastAdvertisedHost]) {
 		[self enforceThermalGuardrails];
 		return;
@@ -238,6 +241,34 @@ static NSString *BSCLocalWiFiAddress(void) {
 	NSLog(@"[SecurityCam] network address changed %@ -> %@, refreshing Bonjour", previous, host);
 	[self.bonjourPublisher startWithHTTPPort:(uint16_t)self.httpPort rtspPort:(uint16_t)self.rtspPort];
 	[self enforceThermalGuardrails];
+}
+
+- (void)sendNetworkKeepaliveFromHost:(NSString *)host {
+	NSArray<NSString *> *parts = [host componentsSeparatedByString:@"."];
+	if (parts.count != 4) {
+		return;
+	}
+	NSString *target = [NSString stringWithFormat:@"%@.%@.%@.1", parts[0], parts[1], parts[2]];
+
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0) {
+		return;
+	}
+
+	struct sockaddr_in address;
+	memset(&address, 0, sizeof(address));
+	address.sin_family = AF_INET;
+	address.sin_port = htons(9);
+	if (inet_pton(AF_INET, target.UTF8String, &address.sin_addr) != 1) {
+		close(fd);
+		return;
+	}
+
+	const char payload[] = "SecurityCam";
+	sendto(fd, payload, sizeof(payload) - 1, 0, (struct sockaddr *)&address, sizeof(address));
+	close(fd);
+	self.lastNetworkKeepaliveAt = [NSDate date];
+	self.networkKeepaliveTarget = target;
 }
 
 - (void)enforceThermalGuardrails {
@@ -294,6 +325,8 @@ static NSString *BSCLocalWiFiAddress(void) {
 	status[@"bonjourServiceType"] = BSCBonjourServiceType;
 	status[@"bonjourServiceName"] = self.bonjourPublisher.serviceName ?: @"";
 	status[@"lastNetworkChangeAt"] = self.lastNetworkChangeAt ? @([self.lastNetworkChangeAt timeIntervalSince1970]) : @0;
+	status[@"lastNetworkKeepaliveAt"] = self.lastNetworkKeepaliveAt ? @([self.lastNetworkKeepaliveAt timeIntervalSince1970]) : @0;
+	status[@"networkKeepaliveTarget"] = self.networkKeepaliveTarget ?: @"";
 	status[@"thermalState"] = [self thermalStateString];
 	status[@"lowPowerMode"] = @([[NSProcessInfo processInfo] isLowPowerModeEnabled]);
 	status[@"batteryMonitoringEnabled"] = @([UIDevice currentDevice].batteryMonitoringEnabled);

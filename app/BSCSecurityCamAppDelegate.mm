@@ -2,6 +2,14 @@
 #import "BSCModeController.h"
 #import "../shared/BSCModeState.h"
 #import <AVFoundation/AVFoundation.h>
+#import <dlfcn.h>
+
+typedef uint32_t BSCIOPMAssertionID;
+typedef int (*BSCIOPMAssertionCreateWithNameFunction)(CFStringRef assertionType, uint32_t assertionLevel, CFStringRef assertionName, BSCIOPMAssertionID *assertionID);
+typedef int (*BSCIOPMAssertionReleaseFunction)(BSCIOPMAssertionID assertionID);
+
+static const BSCIOPMAssertionID BSCIOPMNullAssertionID = 0;
+static const uint32_t BSCIOPMAssertionLevelOn = 255;
 
 @interface BSCBlackViewController : UIViewController
 @end
@@ -25,6 +33,7 @@
 @property (nonatomic, strong) AVAudioEngine *keepAliveAudioEngine;
 @property (nonatomic, strong) AVAudioSourceNode *silenceSourceNode;
 @property (nonatomic, assign) UIBackgroundTaskIdentifier backgroundTask;
+@property (nonatomic, assign) BSCIOPMAssertionID powerAssertionID;
 @end
 
 @implementation BSCSecurityCamAppDelegate
@@ -39,7 +48,9 @@
 	[application setIdleTimerDisabled:YES];
 	[UIScreen mainScreen].brightness = 0.0;
 	self.backgroundTask = UIBackgroundTaskInvalid;
+	self.powerAssertionID = BSCIOPMNullAssertionID;
 	[self startBackgroundKeepAlive];
+	[self startPowerAssertion];
 
 	NSMutableDictionary *state = [[BSCModeState currentState] mutableCopy];
 	state[@"OriginalBrightness"] = @(self.originalBrightness);
@@ -58,6 +69,7 @@
 - (void)applicationDidEnterBackground:(UIApplication *)application {
 	[self beginBackgroundTask:application];
 	[self startBackgroundKeepAlive];
+	[self startPowerAssertion];
 	[UIScreen mainScreen].brightness = 0.0;
 }
 
@@ -65,11 +77,13 @@
 	[application setIdleTimerDisabled:YES];
 	[UIScreen mainScreen].brightness = 0.0;
 	[self startBackgroundKeepAlive];
+	[self startPowerAssertion];
 }
 
 - (void)applicationWillTerminate:(UIApplication *)application {
 	[self.modeController stop];
 	[self stopBackgroundKeepAlive];
+	[self stopPowerAssertion];
 	[self endBackgroundTask:application];
 	[application setIdleTimerDisabled:NO];
 	if (![BSCModeState isEnabled]) {
@@ -148,6 +162,53 @@
 	self.keepAliveAudioEngine = nil;
 	self.silenceSourceNode = nil;
 	[[AVAudioSession sharedInstance] setActive:NO withOptions:0 error:nil];
+}
+
+- (void)startPowerAssertion {
+	if (self.powerAssertionID != BSCIOPMNullAssertionID) {
+		return;
+	}
+
+	void *handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY);
+	if (!handle) {
+		NSLog(@"[SecurityCam] IOKit unavailable for power assertion: %s", dlerror());
+		return;
+	}
+
+	BSCIOPMAssertionCreateWithNameFunction createAssertion = (BSCIOPMAssertionCreateWithNameFunction)dlsym(handle, "IOPMAssertionCreateWithName");
+	if (!createAssertion) {
+		NSLog(@"[SecurityCam] IOPMAssertionCreateWithName unavailable");
+		dlclose(handle);
+		return;
+	}
+
+	BSCIOPMAssertionID assertionID = BSCIOPMNullAssertionID;
+	int result = createAssertion(CFSTR("NoIdleSleepAssertion"),
+								 BSCIOPMAssertionLevelOn,
+								 CFSTR("SecurityCam camera mode"),
+								 &assertionID);
+	dlclose(handle);
+	if (result == 0) {
+		self.powerAssertionID = assertionID;
+		NSLog(@"[SecurityCam] power assertion active");
+	} else {
+		NSLog(@"[SecurityCam] power assertion failed: %d", result);
+	}
+}
+
+- (void)stopPowerAssertion {
+	if (self.powerAssertionID == BSCIOPMNullAssertionID) {
+		return;
+	}
+	void *handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY);
+	if (handle) {
+		BSCIOPMAssertionReleaseFunction releaseAssertion = (BSCIOPMAssertionReleaseFunction)dlsym(handle, "IOPMAssertionRelease");
+		if (releaseAssertion) {
+			releaseAssertion(self.powerAssertionID);
+		}
+		dlclose(handle);
+	}
+	self.powerAssertionID = BSCIOPMNullAssertionID;
 }
 
 @end

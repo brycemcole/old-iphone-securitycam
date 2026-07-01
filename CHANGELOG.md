@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+- Adds a no-idle-sleep power assertion while camera mode is active.
+- Adds a periodic local-network heartbeat and reports `lastNetworkKeepaliveAt` and `networkKeepaliveTarget` in `/status`.
+- Intended to reduce locked-device Wi-Fi disappearance when the phone is acting as a long-running camera.
+
 ## 0.3.1
 
 - Adds an in-app frame watchdog that restarts the encoder if status stays alive but encoded H.264 frames stop advancing.
