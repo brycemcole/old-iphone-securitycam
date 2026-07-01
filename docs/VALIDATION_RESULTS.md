@@ -117,3 +117,17 @@ Mitigation prepared in package `0.3.2-1+debug`, pending install and validation o
 - App starts a no-idle-sleep power assertion while camera mode is active.
 - App sends a periodic local-network heartbeat to the presumed gateway.
 - `/status` reports `lastNetworkKeepaliveAt` and `networkKeepaliveTarget`.
+
+Follow-up validation after the phone returned to Wi-Fi:
+
+- Installed package `0.3.2-1+debug`.
+- Required one unlocked foreground launch after package restart before camera capture would start.
+- Direct RTSP probed as H.264 `1280x720` at `10fps`.
+- Scrypted rebroadcast RTSP probed as H.264 `1280x720` at `10fps`.
+- Bonjour advertised `_oldiphonecam._tcp` again.
+- Two-minute monitor passed: all status and RTSP samples OK.
+- Frames advanced from `478` to `1669`.
+- Thermal state stayed `nominal`.
+- Battery rose from about `52%` to `54%`.
+- Final checked status reported `captureRunning=true`, `encodedFrames=2048`, `lastNetworkKeepaliveAt` set, and `networkKeepaliveTarget=192.168.86.1`.
+- Scrypted HomeKit handled live stream requests and sent the feed to a local client using FFmpeg.
